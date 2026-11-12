@@ -1,0 +1,31 @@
+title: DiRoots Documentation Sandbox
+description: Test documentation for shared DiRoots preview workflows.
+url: "https://diroots-limited.github.io"
+baseurl: "/DiRoots.Sandbox.Releases"
+
+remote_theme: just-the-docs/just-the-docs
+plugins:
+  - jekyll-remote-theme
+
+color_scheme: light
+search_enabled: true
+heading_anchors: true
+
+search:
+  heading_level: 2
+  previews: 3
+  preview_words_before: 5
+  preview_words_after: 10
+  rel_url: true
+  button: false
+
+aux_links:
+  "DiRoots Public Workflows":
+    - "https://github.com/DiRoots-Limited/DiRoots.Public.Workflows"
+aux_links_new_tab: true
+
+exclude:
+  - README.md
+  - Gemfile
+  - Gemfile.lock
+  - vendor
