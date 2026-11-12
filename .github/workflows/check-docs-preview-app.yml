@@ -1,3 +1,7 @@
+# Manual diagnostic for documentation-preview App configuration, token creation,
+# and repository read access. No checkout or repository writes are performed.
+# This workflow reports availability/results without printing credential values;
+# the App action masks its generated token and revokes it on completion.
 name: Check documentation preview App access
 
 on:
@@ -37,6 +41,9 @@ jobs:
       - name: Request a read-only token for this repository
         if: steps.credentials.outputs.available == 'true'
         id: app
+        # Owned by GitHub: https://github.com/actions/create-github-app-token.
+        # Repository maintainers update this SHA through a reviewed PR after checking
+        # upstream release notes, then rerun this diagnostic to validate access.
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
         with:
           app-id: ${{ vars.DOCS_PREVIEW_APP_ID }}
