@@ -1,0 +1,97 @@
+name: Check documentation preview App access
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check-access:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check required configuration is available
+        id: credentials
+        shell: bash
+        env:
+          APP_ID: ${{ vars.DOCS_PREVIEW_APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.DOCS_PREVIEW_APP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          available=true
+          if [[ -n "$APP_ID" ]]; then
+            echo 'App ID is available.'
+          else
+            echo '::error::DOCS_PREVIEW_APP_ID is not available to this repository.'
+            available=false
+          fi
+          if [[ -n "$APP_PRIVATE_KEY" ]]; then
+            echo 'App private key is available; its value is not displayed.'
+          else
+            echo '::error::DOCS_PREVIEW_APP_PRIVATE_KEY is not available to this repository.'
+            available=false
+          fi
+          echo "available=$available" >> "$GITHUB_OUTPUT"
+          [[ "$available" == true ]]
+
+      - name: Request a read-only token for this repository
+        if: steps.credentials.outputs.available == 'true'
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+        with:
+          app-id: ${{ vars.DOCS_PREVIEW_APP_ID }}
+          private-key: ${{ secrets.DOCS_PREVIEW_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: read
+
+      - name: Verify repository contents can be read
+        id: access
+        shell: python
+        env:
+          APP_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          import os
+          from urllib.error import HTTPError, URLError
+          from urllib.request import Request, urlopen
+
+          endpoint = f"{os.environ['GITHUB_API_URL']}/repos/{os.environ['GITHUB_REPOSITORY']}/contents"
+          request = Request(endpoint, headers={
+              'Authorization': 'Bearer ' + os.environ['APP_TOKEN'],
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+          })
+          try:
+              with urlopen(request, timeout=30) as response:
+                  if response.status != 200:
+                      raise SystemExit('::error::Unexpected repository contents response.')
+          except HTTPError as error:
+              raise SystemExit(f'::error::Repository contents check failed with HTTP {error.code}.') from None
+          except URLError:
+              raise SystemExit('::error::Could not connect to the GitHub API.') from None
+          print('The App token can read this repository. No content or credentials are displayed.')
+
+      - name: Summarize diagnostic result
+        if: always()
+        shell: bash
+        env:
+          CONFIG_AVAILABLE: ${{ steps.credentials.outputs.available }}
+          TOKEN_OUTCOME: ${{ steps.app.outcome }}
+          ACCESS_OUTCOME: ${{ steps.access.outcome }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Documentation preview App diagnostic'
+            if [[ "$CONFIG_AVAILABLE" != true ]]; then
+              echo 'Required App configuration is unavailable to this repository. An administrator must confirm where it is stored and grant access.'
+            elif [[ "$TOKEN_OUTCOME" != success ]]; then
+              echo 'Configuration is available, but a repository-scoped token could not be created. Check App installation, credentials and Contents permission.'
+            elif [[ "$ACCESS_OUTCOME" != success ]]; then
+              echo 'A token was created, but the repository contents read check failed. Inspect the failed step.'
+            else
+              echo 'PASS: configuration is available, a repository-scoped App token was created, and repository contents can be read.'
+            fi
+            echo ''
+            echo 'This diagnostic requests read access only. It does not verify write permission or branch-protection bypass, and does not change repository files.'
+            echo 'Configuration availability does not reveal whether the values come from repository settings or organization settings.'
+          } >> "$GITHUB_STEP_SUMMARY"
